@@ -1,3 +1,96 @@
-from django.shortcuts import render
+from rest_framework import serializers, status, viewsets
+from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticatedOrReadOnly
+from rest_framework.response import Response
 
-# Create your views here.
+from .models import Category, Ingredient, Recipe
+from .permissions import IsRecipeOwnerOrReadOnly
+
+
+class CategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Category
+        fields = "__all__"
+
+
+class IngredientSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Ingredient
+        fields = "__all__"
+
+
+class RecipeSerializer(serializers.ModelSerializer):
+    ingredients = serializers.PrimaryKeyRelatedField(
+        many=True,
+        queryset=Ingredient.objects.all(),
+        required=False,
+    )
+
+    class Meta:
+        model = Recipe
+        fields = "__all__"
+        read_only_fields = ("user",)
+
+    def create(self, validated_data):
+        ingredients = validated_data.pop("ingredients", [])
+        recipe = Recipe.objects.create(**validated_data)
+        if ingredients:
+            recipe.ingredients.set(ingredients)
+        return recipe
+
+    def update(self, instance, validated_data):
+        ingredients = validated_data.pop("ingredients", None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+
+        if ingredients is not None:
+            instance.ingredients.set(ingredients)
+
+        return instance
+
+
+class CategoryViewSet(viewsets.ModelViewSet):
+    queryset = Category.objects.all()
+    serializer_class = CategorySerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+
+class IngredientViewSet(viewsets.ModelViewSet):
+    queryset = Ingredient.objects.all()
+    serializer_class = IngredientSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+
+class RecipeViewSet(viewsets.ModelViewSet):
+    queryset = Recipe.objects.all()
+    serializer_class = RecipeSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly, IsRecipeOwnerOrReadOnly]
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+    @action(detail=False, methods=["get"], url_path=r"category/(?P<category_id>\d+)")
+    def by_category(self, request, category_id=None):
+        queryset = self.get_queryset().filter(category_id=category_id)
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=["get"], url_path=r"ingredient/(?P<ingredient_id>\d+)")
+    def by_ingredient(self, request, ingredient_id=None):
+        queryset = self.get_queryset().filter(ingredients__id=ingredient_id).distinct()
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=["get"], url_path="search")
+    def search(self, request):
+        title = (request.query_params.get("title") or "").strip()
+        if not title:
+            return Response(
+                {"detail": "Query parameter 'title' is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        queryset = self.get_queryset().filter(title__icontains=title)
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
