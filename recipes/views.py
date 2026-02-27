@@ -1,10 +1,9 @@
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
 
 from .models import Category, Ingredient, Recipe
-from .permissions import IsRecipeOwnerOrReadOnly
+from .permissions import IsAdminForRecipeWrite
 
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -20,22 +19,39 @@ class IngredientSerializer(serializers.ModelSerializer):
 
 
 class RecipeSerializer(serializers.ModelSerializer):
+    category = serializers.PrimaryKeyRelatedField(
+        queryset=Category.objects.all(),
+        required=True,
+        allow_null=False,
+    )
     ingredients = serializers.PrimaryKeyRelatedField(
         many=True,
         queryset=Ingredient.objects.all(),
-        required=False,
+        required=True,
     )
 
     class Meta:
         model = Recipe
-        fields = "__all__"
+        fields = (
+            "title",
+            "description",
+            "instructions",
+            "category",
+            "ingredients",
+        )
         read_only_fields = ("user",)
 
+    def validate_ingredients(self, value):
+        if not value:
+            raise serializers.ValidationError(
+                "At least one ingredient is required."
+            )
+        return value
+
     def create(self, validated_data):
-        ingredients = validated_data.pop("ingredients", [])
+        ingredients = validated_data.pop("ingredients")
         recipe = Recipe.objects.create(**validated_data)
-        if ingredients:
-            recipe.ingredients.set(ingredients)
+        recipe.ingredients.set(ingredients)
         return recipe
 
     def update(self, instance, validated_data):
@@ -53,19 +69,19 @@ class RecipeSerializer(serializers.ModelSerializer):
 class CategoryViewSet(viewsets.ModelViewSet):
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    permission_classes = [IsAdminForRecipeWrite]
 
 
 class IngredientViewSet(viewsets.ModelViewSet):
     queryset = Ingredient.objects.all()
     serializer_class = IngredientSerializer
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    permission_classes = [IsAdminForRecipeWrite]
 
 
 class RecipeViewSet(viewsets.ModelViewSet):
     queryset = Recipe.objects.all()
     serializer_class = RecipeSerializer
-    permission_classes = [IsAuthenticatedOrReadOnly, IsRecipeOwnerOrReadOnly]
+    permission_classes = [IsAdminForRecipeWrite]
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)

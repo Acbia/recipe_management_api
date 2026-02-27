@@ -12,11 +12,9 @@ from rest_framework.reverse import reverse
 def api_root(request):
     return Response(
         {
-            "message": "Recipe Management API",
             "register": reverse("register", request=request),
             "login": reverse("login", request=request),
-            "logout": reverse("logout", request=request),
-            "me": reverse("user-me", request=request),
+            "admin_login": reverse("admin:login", request=request),
             "categories": reverse("category-list", request=request),
             "ingredients": reverse("ingredient-list", request=request),
             "recipes": reverse("recipe-list", request=request),
