@@ -92,6 +92,14 @@ class RecipeViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
+    @action(detail=False, methods=["get"], url_path=r"category-name/(?P<category_name>[^/]+)")
+    def by_category_name(self, request, category_name=None):
+        queryset = self.get_queryset().filter(
+            category__name__iexact=category_name
+        )
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
     @action(detail=False, methods=["get"], url_path=r"ingredient/(?P<ingredient_id>\d+)")
     def by_ingredient(self, request, ingredient_id=None):
         queryset = self.get_queryset().filter(ingredients__id=ingredient_id).distinct()
